@@ -1,14 +1,18 @@
 NAME := $(or $(NAME),$(NAME),selenium)
-VERSION := $(or $(VERSION),$(VERSION),3.141.59-neon)
+VERSION := $(or $(VERSION),$(VERSION),3.141.59)
 NAMESPACE := $(or $(NAMESPACE),$(NAMESPACE),$(NAME))
-AUTHORS := $(or $(AUTHORS),$(AUTHORS),SeleniumHQ)
+AUTHORS := appearin
 PLATFORM := $(shell uname -s)
 BUILD_ARGS := $(BUILD_ARGS)
 MAJOR := $(word 1,$(subst ., ,$(VERSION)))
 MINOR := $(word 2,$(subst ., ,$(VERSION)))
 MAJOR_MINOR_PATCH := $(word 1,$(subst -, ,$(VERSION)))
 
-all: hub chrome firefox chrome_debug firefox_debug standalone_chrome standalone_firefox standalone_chrome_debug standalone_firefox_debug
+SHELL=/bin/bash
+
+all: generate_all_custom
+
+generate_all_custom: custom_chrome_save_cache custom_firefox_save_cache
 
 generate_all:	\
 	generate_hub \
@@ -88,6 +92,64 @@ generate_firefox_debug:
 
 firefox_debug: generate_firefox_debug firefox
 	cd ./NodeFirefoxDebug && docker build $(BUILD_ARGS) -t $(NAME)/node-firefox-debug:$(VERSION) .
+
+# appear.in custom versions
+custom_generate_chrome_%_debug:
+	cd ./NodeDebug && ./generate.sh NodeChromeDebug selenium-node-chrome-$* Chrome $(VERSION) $(AUTHORS) $(AUTHORS)
+
+custom_chrome_%_debug: custom_generate_chrome_%_debug custom_chrome
+	cd ./NodeChromeDebug && docker build $(BUILD_ARGS) -t $(AUTHORS)/selenium-node-chrome-$*-debug:$(VERSION) .
+
+custom_generate_firefox_%_debug:
+	cd ./NodeDebug && ./generate.sh NodeFirefoxDebug selenium-node-firefox-$* Firefox $(VERSION) $(AUTHORS) $(AUTHORS)
+
+custom_firefox_%_debug: custom_generate_firefox_%_debug custom_firefox
+	cd ./NodeFirefoxDebug && docker build $(BUILD_ARGS) -t $(AUTHORS)/selenium-node-firefox-$*-debug:$(VERSION) .
+
+custom_chrome_debug: custom_chrome_stable_debug custom_chrome_beta_debug custom_chrome_unstable_debug
+
+custom_firefox_debug: custom_firefox_stable_debug custom_firefox_beta_debug custom_firefox_nightly_debug custom_firefox_esr_debug
+
+custom_chrome: custom_chrome_load_cache
+	(cd ./NodeChrome && \
+	for ver in chrome-{stable,beta,unstable}; do \
+	  curl --head https://dl.google.com/linux/direct/google-$${ver}_current_amd64.deb 2>/dev/null | tr A-Z a-z | grep ^etag: > google-$${ver}.etag; \
+	  docker build --build-arg BASE=selenium/node-base:$(VERSION) -f Dockerfile-appearin \
+	    --target google-$${ver} -t $(AUTHORS)/selenium-node-$${ver}:$(VERSION) $(BUILD_ARGS) . ;\
+	done)
+
+custom_firefox: custom_firefox_load_cache
+	(cd ./NodeFirefox && \
+	for ver in firefox-{stable,beta,nightly,esr}; do \
+	  curl -L --head "https://download.mozilla.org/?product=$${ver/-stable/}-latest-ssl&os=linux64&lang=en-US" 2>/dev/null | tr A-Z a-z | grep ^etag: > $${ver}.etag; \
+	  docker build --build-arg BASE=selenium/node-base:$(VERSION) -f Dockerfile-appearin \
+	    --target $${ver} -t $(AUTHORS)/selenium-node-$${ver}:$(VERSION) $(BUILD_ARGS) . ;\
+	done)
+
+custom_chrome_save_cache: custom_chrome custom_chrome_debug
+	./save-cache.sh $(AUTHORS) $(VERSION) chrome chrome-{stable,beta,unstable}{,-debug}
+
+custom_firefox_save_cache: custom_firefox custom_firefox_debug
+	./save-cache.sh $(AUTHORS) $(VERSION) firefox firefox-{stable,beta,nightly,esr}{,-debug}
+
+custom_%_load_cache:
+	./load-cache.sh $*
+
+release_custom: generate_all_custom
+	docker push $(AUTHORS)/selenium-node-chrome-stable:$(VERSION)
+	docker push $(AUTHORS)/selenium-node-chrome-stable-debug:$(VERSION)
+	docker push $(AUTHORS)/selenium-node-chrome-beta:$(VERSION)
+	docker push $(AUTHORS)/selenium-node-chrome-beta-debug:$(VERSION)
+	docker push $(AUTHORS)/selenium-node-chrome-unstable:$(VERSION)
+	docker push $(AUTHORS)/selenium-node-chrome-unstable-debug:$(VERSION)
+	docker push $(AUTHORS)/selenium-node-firefox-stable:$(VERSION)
+	docker push $(AUTHORS)/selenium-node-firefox-stable-debug:$(VERSION)
+	docker push $(AUTHORS)/selenium-node-firefox-beta:$(VERSION)
+	docker push $(AUTHORS)/selenium-node-firefox-beta-debug:$(VERSION)
+	docker push $(AUTHORS)/selenium-node-firefox-nightly:$(VERSION)
+	docker push $(AUTHORS)/selenium-node-firefox-nightly-debug:$(VERSION)
+	docker push $(AUTHORS)/selenium-node-firefox-esr:$(VERSION)
+	docker push $(AUTHORS)/selenium-node-firefox-esr-debug:$(VERSION)
 
 tag_latest:
 	docker tag $(NAME)/base:$(VERSION) $(NAME)/base:latest

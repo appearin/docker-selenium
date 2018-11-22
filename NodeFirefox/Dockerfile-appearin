@@ -1,0 +1,93 @@
+ARG BASE
+FROM ${BASE} AS firefox-base
+LABEL authors="appearin"
+
+USER root
+
+#=========
+# Firefox
+#=========
+RUN apt-get update -qqy \
+  && apt-get -qqy --no-install-recommends install firefox \
+  && rm -rf /var/lib/apt/lists/* /var/cache/apt/* \
+  && apt-get -y purge firefox \
+  && rm -rf /opt/firefox
+
+#============
+# GeckoDriver
+#============
+ARG GECKODRIVER_VERSION=latest
+RUN GK_VERSION=$(if [ ${GECKODRIVER_VERSION:-latest} = "latest" ]; then echo "0.23.0"; else echo $GECKODRIVER_VERSION; fi) \
+  && echo "Using GeckoDriver version: "$GK_VERSION \
+  && wget --no-verbose -O /tmp/geckodriver.tar.gz https://github.com/mozilla/geckodriver/releases/download/v$GK_VERSION/geckodriver-v$GK_VERSION-linux64.tar.gz \
+  && rm -rf /opt/geckodriver \
+  && tar -C /opt -zxf /tmp/geckodriver.tar.gz \
+  && rm /tmp/geckodriver.tar.gz \
+  && mv /opt/geckodriver /opt/geckodriver-$GK_VERSION \
+  && chmod 755 /opt/geckodriver-$GK_VERSION \
+  && ln -fs /opt/geckodriver-$GK_VERSION /usr/bin/geckodriver
+
+COPY generate_config /opt/bin/generate_config
+
+#==========
+# Relaxing permissions for OpenShift and other non-sudo environments
+#==========
+RUN sudo chmod -R 777 ${HOME} \
+  && sudo chgrp -R 0 ${HOME} \
+  && sudo chmod -R g=u ${HOME}
+
+# == Stable
+FROM firefox-base as firefox-stable
+
+COPY firefox-stable.etag /tmp/firefox-stable.etag
+RUN wget --no-verbose -O /tmp/firefox.tar.bz2 "https://download.mozilla.org/?product=firefox-latest-ssl&os=linux64&lang=en-US" \
+  && tar -C /opt -xjf /tmp/firefox.tar.bz2 \
+  && rm /tmp/firefox.tar.bz2 \
+  && mv /opt/firefox /opt/firefox-stable \
+  && ln -fs /opt/firefox-stable/firefox /usr/bin/firefox
+
+USER seluser
+RUN /opt/bin/generate_config > /opt/selenium/config.json
+RUN /usr/bin/firefox -version
+
+# == Beta
+FROM firefox-base as firefox-beta
+
+COPY firefox-beta.etag /tmp/firefox-beta.etag
+RUN wget --no-verbose -O /tmp/firefox.tar.bz2 "https://download.mozilla.org/?product=firefox-beta-latest-ssl&os=linux64&lang=en-US" \
+  && tar -C /opt -xjf /tmp/firefox.tar.bz2 \
+  && rm /tmp/firefox.tar.bz2 \
+  && mv /opt/firefox /opt/firefox-beta \
+  && ln -fs /opt/firefox-beta/firefox /usr/bin/firefox
+
+USER seluser
+RUN /opt/bin/generate_config > /opt/selenium/config.json
+RUN /usr/bin/firefox -version
+
+# == Nightly
+FROM firefox-base as firefox-nightly
+
+COPY firefox-nightly.etag /tmp/firefox-nightly.etag
+RUN wget --no-verbose -O /tmp/firefox.tar.bz2 "https://download.mozilla.org/?product=firefox-nightly-latest-ssl&os=linux64&lang=en-US" \
+  && tar -C /opt -xjf /tmp/firefox.tar.bz2 \
+  && rm /tmp/firefox.tar.bz2 \
+  && mv /opt/firefox /opt/firefox-nightly \
+  && ln -fs /opt/firefox-nightly/firefox /usr/bin/firefox
+
+USER seluser
+RUN /opt/bin/generate_config > /opt/selenium/config.json
+RUN /usr/bin/firefox -version
+
+# == Esr
+FROM firefox-base as firefox-esr
+
+COPY firefox-esr.etag /tmp/firefox-esr.etag
+RUN wget --no-verbose -O /tmp/firefox.tar.bz2 "https://download.mozilla.org/?product=firefox-esr-latest-ssl&os=linux64&lang=en-US" \
+  && tar -C /opt -xjf /tmp/firefox.tar.bz2 \
+  && rm /tmp/firefox.tar.bz2 \
+  && mv /opt/firefox /opt/firefox-esr \
+  && ln -fs /opt/firefox-esr/firefox /usr/bin/firefox
+
+USER seluser
+RUN /opt/bin/generate_config > /opt/selenium/config.json
+RUN /usr/bin/firefox -version
