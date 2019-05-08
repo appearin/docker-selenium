@@ -9,70 +9,36 @@ RUN wget --no-verbose -O /tmp/google-chrome.deb https://dl.google.com/linux/dire
   && apt-get update -qqy \
   && apt-get -qqy install /tmp/google-chrome.deb \
   && dpkg --purge google-chrome-stable \
-  && rm -rf /var/lib/apt/lists/* /var/cache/apt/* /tmp/google-chrome.deb
+  && rm -rf /var/lib/apt/lists/* /var/cache/apt/* /tmp/google-chrome.deb /opt/selenium/chromedriver \
+  && ln -fs /opt/selenium/chromedriver /usr/bin/chromedriver
 
 USER seluser
-
-#============================================
-# Chrome webdriver
-#============================================
-# can specify versions by CHROME_DRIVER_VERSION
-# Latest released version will be used by default
-#============================================
-ARG CHROME_DRIVER_VERSION="latest"
-RUN CD_VERSION=$(if [ ${CHROME_DRIVER_VERSION:-latest} = "latest" ]; then echo $(wget -qO- https://chromedriver.storage.googleapis.com/LATEST_RELEASE); else echo $CHROME_DRIVER_VERSION; fi) \
-  && echo "Using chromedriver version: "$CD_VERSION \
-  && wget --no-verbose -O /tmp/chromedriver_linux64.zip https://chromedriver.storage.googleapis.com/$CD_VERSION/chromedriver_linux64.zip \
-  && rm -rf /opt/selenium/chromedriver \
-  && unzip /tmp/chromedriver_linux64.zip -d /opt/selenium \
-  && rm /tmp/chromedriver_linux64.zip \
-  && mv /opt/selenium/chromedriver /opt/selenium/chromedriver-$CD_VERSION \
-  && chmod 755 /opt/selenium/chromedriver-$CD_VERSION \
-  && sudo ln -fs /opt/selenium/chromedriver-$CD_VERSION /usr/bin/chromedriver
-
 COPY generate_config /opt/bin/generate_config
 COPY wrap_chrome_binary /opt/bin/wrap_chrome_binary
+COPY fetch_chrome /opt/bin/fetch_chrome
 
 USER root
 
 # == Stable
 FROM chrome-base as google-chrome-stable
-
 COPY google-chrome-stable.etag /tmp/google-chrome.etag
-RUN wget --no-verbose -O /tmp/google-chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
-  && apt-get update -qqy \
-  && apt-get -qqy install /tmp/google-chrome.deb \
-  && rm -rf /var/lib/apt/lists/* /var/cache/apt/* /tmp/google-chrome.deb
-
-RUN /opt/bin/wrap_chrome_binary
+RUN /opt/bin/fetch_chrome stable
 USER seluser
 RUN /opt/bin/generate_config > /opt/selenium/config.json
 RUN /usr/bin/google-chrome -version
 
 # == Beta
 FROM chrome-base as google-chrome-beta
-
 COPY google-chrome-beta.etag /tmp/google-chrome.etag
-RUN wget --no-verbose -O /tmp/google-chrome.deb https://dl.google.com/linux/direct/google-chrome-beta_current_amd64.deb \
-  && apt-get update -qqy \
-  && apt-get -qqy install /tmp/google-chrome.deb \
-  && rm -rf /var/lib/apt/lists/* /var/cache/apt/* /tmp/google-chrome.deb
-
-RUN /opt/bin/wrap_chrome_binary
+RUN /opt/bin/fetch_chrome beta
 USER seluser
 RUN /opt/bin/generate_config > /opt/selenium/config.json
 RUN /usr/bin/google-chrome -version
 
 # == Unstable
 FROM chrome-base as google-chrome-unstable
-
 COPY google-chrome-unstable.etag /tmp/google-chrome.etag
-RUN wget --no-verbose -O /tmp/google-chrome.deb https://dl.google.com/linux/direct/google-chrome-unstable_current_amd64.deb \
-  && apt-get update -qqy \
-  && apt-get -qqy install /tmp/google-chrome.deb \
-  && rm -rf /var/lib/apt/lists/* /var/cache/apt/* /tmp/google-chrome.deb
-
-RUN /opt/bin/wrap_chrome_binary
+RUN /opt/bin/fetch_chrome unstable
 USER seluser
 RUN /opt/bin/generate_config > /opt/selenium/config.json
 RUN /usr/bin/google-chrome -version

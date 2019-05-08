@@ -1,0 +1,27 @@
+#!/bin/sh
+
+set -e
+
+CHANNEL="$1"
+
+wget --no-verbose -O /tmp/google-chrome.deb https://dl.google.com/linux/direct/google-chrome-${CHANNEL}_current_amd64.deb
+apt-get update -qqy
+apt-get -qqy install /tmp/google-chrome.deb
+rm -rf /var/lib/apt/lists/* /var/cache/apt/* /tmp/google-chrome.deb
+
+VERSION=$(google-chrome --version | perl -npe 's/^[^\d]+//; s/[^\d]+$//; s/\.\d+$//')
+MAJOR=$(echo $VERSION | perl -npe 's/\..*//;')
+
+# http://chromedriver.chromium.org/downloads/version-selection
+CD_VERSION=$(curl -f https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${VERSION} \
+ || curl -f https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${MAJOR} \
+ || curl -f https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$((MAJOR - 1)))
+
+echo "*** Packaging Google Chrome $VERSION for $CHANNEL, using chromedriver version $CD_VERSION"
+
+wget --no-verbose -O /tmp/chromedriver_linux64.zip https://chromedriver.storage.googleapis.com/$CD_VERSION/chromedriver_linux64.zip
+unzip /tmp/chromedriver_linux64.zip -d /opt/selenium
+rm /tmp/chromedriver_linux64.zip
+chmod 755 /opt/selenium/chromedriver
+
+/opt/bin/wrap_chrome_binary
